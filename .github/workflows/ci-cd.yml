@@ -99,11 +99,33 @@ jobs:
           host:     ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key:      ${{ secrets.EC2_SSH_KEY }}
-          envs:     DOCKER_USERNAME,IMAGE_TAG
           script:   |
             export DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
             export IMAGE_TAG=${{ needs.build-and-push.outputs.sha }}
             bash ~/deploy.sh
+
+  notify:
+    name: Slack notification
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "*CI/CD Pipeline*: ${{ needs.deploy.result == 'success' && '✅ Deployment succeeded' || '❌ Deployment failed' }}",
+              "attachments": [{
+                "color": "${{ needs.deploy.result == 'success' && 'good' || 'danger' }}",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch",     "value": "${{ github.ref_name }}",   "short": true },
+                  { "title": "Commit",     "value": "${{ github.sha }}",        "short": true },
+                  { "title": "Author",     "value": "${{ github.actor }}",      "short": true }
+                ]
+              }]
+            }
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          IMAGE_TAG:       ${{ needs.build-and-push.outputs.sha }}
+          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
